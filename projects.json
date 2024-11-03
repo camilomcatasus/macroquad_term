@@ -1,0 +1,42 @@
+[
+    {
+        "name": "Multiplayer Pong",
+        "ascii_art": [
+            "|                 ",
+            "|                 ",
+            "|    o           |",
+            "                 |" ,
+            "                 |", 
+        ],
+        "about": [
+            "Game Project to learn about real time multiplayer techniques and strategies",
+            "Goals:",
+            "- Easy Host and Join Using Room Codes [x]",
+            "- Implement Reconcilliation           [x]",
+            "- Implement Interpolation             [ ]",
+            "- Implement Lag Compensation          [ ]",
+            "- 2-8 Player Multiplayer              [ ]",
+            "- Player Spectating                   [ ]",
+            "- Implement and Sync Shaders          [ ]",
+        ],
+        "url": ""
+    }, 
+    {
+        "name": "Easy Relay Server"
+        "ascii_art": [
+            "       [__]       ",
+            "      /    \      ",
+            "     /      \     ",
+            "    /        \    ",
+            "   o          o   ",
+            "                  ",
+        ],
+        "about": [
+            "Library for making different types of relay websocket servers",
+            "Currently supports:",
+            "- 2 Person Relay",
+            "- Host Broadcast Relay",
+        ],
+        "url": ""
+    },
+]

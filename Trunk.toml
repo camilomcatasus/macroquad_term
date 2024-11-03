@@ -1,0 +1,14 @@
+trunk-version = "*"
+[build]
+target = "index.html"  # or the filename you used
+inject_scripts = false
+
+
+[serve]
+port = 8083
+
+[[hooks]]
+stage = "post_build"
+command = "trunk_repl"
+command_arguments = ["-s","./dist/.stage", "-p", "{outputwasm}"]
+

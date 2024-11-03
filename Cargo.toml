@@ -1,0 +1,8 @@
+[package]
+name = "macroquad_term"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+macroquad = "0.4.13"
+serde = {version = "1.0.214", features=["derive"]}
