@@ -1,6 +1,9 @@
 use macroquad::{miniquad::window::screen_size, prelude::*};
-use terminal_templates::{generate_highlight_box, TermSubState, BALLOON_SPINNER, LOAD_TEMPLATE, SAND_SPINNER};
+use models::{Cell, Panel, TermSubState, TerminalState};
+use projects::{setup_projects, update_project_buffer};
+use terminal_templates::{generate_highlight_box, BALLOON_SPINNER, BALLOON_SPINNER_CHARS, LOAD_TEMPLATE, SAND_SPINNER};
 use ui::UiContext;
+use utils::overflow_sub;
 
 
 use std::default::Default;
@@ -8,9 +11,16 @@ mod terminal_templates;
 mod models;
 mod ui;
 mod projects;
+mod utils;
 
 #[macroquad::main("TerminalSite")]
 async fn main() {
+
+
+    let projects_file = load_file("projects.json").await.expect("could not load projects.json");
+    let projects_string = String::from_utf8(projects_file).expect("Projects were not in utf8");
+
+    let project_data: Vec<models::ProjectInfo> = serde_json::from_str(&projects_string).expect("Could not deserialize project info");
 
     let (mut screen_w,mut screen_h) = screen_size();
     let mut term_render_target = render_target(screen_w as u32, screen_h as u32);
@@ -23,6 +33,7 @@ async fn main() {
     terminal_state.terminal_width_px = screen_w;
     terminal_state.terminal_height_px = screen_h;
     terminal_state.font = Some(font.clone());
+    terminal_state.projects = project_data;
     setup_loading_state(&mut terminal_state);
 
     let mut material_params = MaterialParams::default();
@@ -38,7 +49,7 @@ async fn main() {
         material_params,
     ).unwrap();
 
-    const LOADING_STEP_TIME: f32 = 0.2;
+    const LOADING_STEP_TIME: f32 = 0.08;
     
     let mut ui_context = ui::UiContext::default();
     let ui_skin = ui::create_ui_skin(&font);
@@ -66,23 +77,27 @@ async fn main() {
             ..Default::default()
         });
 
-        match terminal_state.sub_state {
+        match &terminal_state.sub_state {
             TermSubState::Load { step, mut timer } => {
                 timer += get_frame_time();
                 if timer > LOADING_STEP_TIME {
                     timer = 0f32;
-                    terminal_state.sub_state = TermSubState::Load { step, timer };
+                    terminal_state.sub_state = TermSubState::Load { step: *step, timer };
                     step_loading_state(&mut terminal_state);
                 }
                 else {
-                    terminal_state.sub_state = TermSubState::Load { step, timer };
+                    terminal_state.sub_state = TermSubState::Load { step: *step, timer };
                 }
+            }
+            TermSubState::Projects { selected_project_index, project_about_scroll, main_focus, panels } => {
+
+                //projects::update_project_buffer(&mut terminal_state, &project_data);
             }
             _ => (),
         }
 
         clear_background(DARKGRAY);
-        draw_terminal(&terminal_state);
+        draw_terminal_cells(&terminal_state);
 
         set_default_camera();
 
@@ -110,19 +125,6 @@ async fn main() {
     }
 }
 
-#[derive(Default)]
-struct TerminalState {
-    line_buffer: Vec<String>,
-    highlighted_boxes: Vec<Rect>,
-    line_index: usize,
-    cursor_x: f32,
-    cursor_y: f32,
-    font_size: f32,
-    terminal_width_px: f32,
-    terminal_height_px: f32,
-    sub_state: TermSubState,
-    font: Option<Font>,
-}
 
 fn draw_terminal(terminal_state: &TerminalState) {
 
@@ -141,7 +143,6 @@ fn draw_terminal(terminal_state: &TerminalState) {
             vertical_padding + rect.y as f32 * terminal_state.font_size - screen_h / 2f32 + (terminal_state.font_size / 5f32), 
             rect.w * terminal_state.font_size / 2f32, 
             rect.h * terminal_state.font_size, WHITE);
-
     }
 
     let mut row = 1f32;
@@ -161,46 +162,101 @@ fn draw_terminal(terminal_state: &TerminalState) {
                 });
             }
             col += 1f32;
-
         }
         row += 1.;
-        
     }
+}
 
+pub fn draw_terminal_cells(terminal_state: &TerminalState) {
+    let (screen_w, screen_h) = screen_size();
+
+    let font = match &terminal_state.font {
+        Some(val) => val,
+        None => panic!("Could not load font correctly")
+    };
+    
+    let term_col_count = terminal_state.cell_buffer[0].len() as f32;
+    let term_row_count = terminal_state.cell_buffer.len() as f32;
+
+    let vertical_padding = (screen_h - term_row_count * terminal_state.font_size) / 2f32;
+    let horizontal_padding = (screen_w - term_col_count * terminal_state.font_size / 2f32) / 2f32;
+
+    for (cell_y, cell_line) in terminal_state.cell_buffer.iter().enumerate() {
+        for (cell_x, cell) in cell_line.iter().enumerate() {
+
+            if let Some(background_color) = cell.background_color {
+                draw_rectangle(horizontal_padding + cell_x as f32 * terminal_state.font_size / 2f32 - screen_w / 2f32, 
+                    vertical_padding + cell_y as f32 * terminal_state.font_size - screen_h / 2f32 + (terminal_state.font_size / 5f32), 
+                    terminal_state.font_size / 2f32, 
+                    terminal_state.font_size, 
+                    *background_color);
+            }
+
+            let char_x = horizontal_padding + cell_x as f32 * terminal_state.font_size / 2f32 - screen_w / 2f32;
+            let char_y = vertical_padding + cell_y as f32 * terminal_state.font_size - screen_h / 2f32;
+            draw_text_ex(&cell.char.to_string(), char_x, char_y, TextParams {
+                font: Some(font),
+                font_size: terminal_state.font_size as u16,
+                color: *cell.foreground_color,
+                ..Default::default()
+
+            });
+        }
+    }
 
 }
 
 fn setup_loading_state(terminal_state: &mut TerminalState) {
     let (screen_x, screen_y) = screen_size();
     terminal_state.sub_state = TermSubState::Load { step: 0 , timer: 0f32};
-    terminal_state.line_buffer = LOAD_TEMPLATE.to_vec().iter().map(|val| val.to_string()).collect();
-    let rect_length = terminal_state.line_buffer[0].chars().count();
+    terminal_state.cell_buffer = LOAD_TEMPLATE.iter().map(|line| {
+        line.chars().map(|c| {
+            models::Cell {
+                char: c,
+                foreground_color: &GREEN,
+                background_color: None,
+            }
+        }).collect()
+
+    }).collect();
+    let rect_length = terminal_state.cell_buffer[0].len();
     let padding = " ".repeat(( rect_length - 9 )/ 2);
-    let loading_str = format!("{}{} Loading", padding, BALLOON_SPINNER[0]);
-    terminal_state.line_buffer.push("".to_string());
-    terminal_state.line_buffer.push(loading_str);
+    let loading_str : Vec<Cell> = format!("{}{} Loading", padding, BALLOON_SPINNER[0]).chars().map(|c| {
+        Cell {
+            char: c,
+            background_color: None,
+            foreground_color: &GREEN
+        }
+
+    }).collect();
+    terminal_state.cell_buffer.push(loading_str);
 
 }
 
 fn step_loading_state(terminal_state: &mut TerminalState) {
     if let TermSubState::Load { ref mut step, timer: _} = terminal_state.sub_state {
 
-        let prev_spinner_string = BALLOON_SPINNER[*step % BALLOON_SPINNER.len()];
-        if *step >= BALLOON_SPINNER.len() * 2 {
-            setup_main_state(terminal_state);
-            return;
+        let prev_spinner_char = BALLOON_SPINNER_CHARS[*step % BALLOON_SPINNER_CHARS.len()];
+        if *step >= BALLOON_SPINNER_CHARS.len() * 2 && false {
+            //setup_main_state(terminal_state);
+            //return;
         } else {
             *step = *step + 1;
         }
 
-        let new_spinner_string = BALLOON_SPINNER[*step % BALLOON_SPINNER.len()];
-        let new_line = terminal_state.line_buffer.last().expect("").replacen(prev_spinner_string, new_spinner_string, 1);
-        let buffer_length = terminal_state.line_buffer.len();
-        terminal_state.line_buffer[buffer_length - 1] = new_line;
+        let new_spinner_char = BALLOON_SPINNER_CHARS[*step % BALLOON_SPINNER_CHARS.len()];
+
+        let cell_opt : Option<&mut Cell> = terminal_state.cell_buffer.last_mut().unwrap().iter_mut().find(|cell| {
+            cell.char == prev_spinner_char
+        });
+
+        if let Some(cell) = cell_opt {
+            cell.char = new_spinner_char;
+        }
     }
 }
 
-fn setup_main_state(terminal_state: &mut TerminalState) {
+pub fn setup_main_state(terminal_state: &mut TerminalState) {
     let (screen_x, screen_y) = screen_size();
 
     terminal_state.sub_state = TermSubState::Main { index: 0 };
@@ -215,14 +271,28 @@ fn setup_main_state(terminal_state: &mut TerminalState) {
 }
 
 fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
-    match terminal_state.sub_state {
+    let down_input = is_key_pressed(KeyCode::Down) || is_key_pressed(KeyCode::S) || ui_context.down_pressed;
+    let up_input = is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::W) || ui_context.up_pressed;
+    let left_pressed = is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::A) || ui_context.left_pressed;
+    let right_pressed = is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) || ui_context.right_pressed;
+    let enter_pressed = is_key_pressed(KeyCode::Enter) || ui_context.enter_pressed;
+    let back_pressed = is_key_pressed(KeyCode::Backspace);
+
+    //Check to see if we need to handle input
+    if !(down_input || up_input || left_pressed || right_pressed || enter_pressed || back_pressed) {
+        return;
+    }
+
+    let project_count = terminal_state.projects.len();
+
+    match &mut terminal_state.sub_state {
         TermSubState::Main { ref mut index } => {
             let mut index_changed = false;
-            if is_key_pressed(KeyCode::Down) || is_key_pressed(KeyCode::S) || ui_context.down_pressed {
+            if down_input {
                 index_changed = true;
                 *index = (*index + 1) % 3;
             }
-            else if is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::W) || ui_context.up_pressed {
+            else if up_input {
                 index_changed = true;
                 if *index == 0 {
                     *index = 2;
@@ -231,16 +301,16 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
                     *index -= 1;
                 }
             }
-            else if is_key_pressed(KeyCode::Enter) || ui_context.enter_pressed {
-                terminal_state.sub_state = match index {
+            else if enter_pressed {
+                match index {
                     0 => {
-                        TermSubState::Projects { selected_project_index: 0, project_about_scroll: 0, main_focus: true }
+                        setup_projects(terminal_state);
                     }
                     1 => {
-                        TermSubState::Resume {  }
+                        //TermSubState::Resume {  }
                     }
                     2 => {
-                        TermSubState::Contact {  }
+                        //TermSubState::Contact {  }
                     }
                     _ => panic!("")
 
@@ -251,6 +321,25 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
             if index_changed {
                 terminal_state.highlighted_boxes = vec![generate_highlight_box(*index + 1).expect("Input should always return a box")];
             }
+        }
+        TermSubState::Projects { ref mut selected_project_index, project_about_scroll, main_focus, ref mut panels } => {
+            if back_pressed {
+                setup_main_state(terminal_state);
+                return;
+            }
+            if *main_focus {
+                if up_input {
+                    *selected_project_index = overflow_sub(&selected_project_index, project_count);
+                }
+                if down_input {
+                    *selected_project_index = (*selected_project_index + 1) % project_count;
+                }
+            }
+
+            panels[projects::ABOUT_PANEL_INDEX].text = terminal_state.projects[*selected_project_index].about.clone();
+            panels[projects::ART_PANEL_INDEX].text = terminal_state.projects[*selected_project_index].ascii_art.clone();
+
+            update_project_buffer(terminal_state);
         }
 
         _ => ()

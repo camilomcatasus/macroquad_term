@@ -1,4 +1,5 @@
 use macroquad::math::Rect;
+use crate::TermSubState;
 
 
 
@@ -91,39 +92,12 @@ pub const BALLOON_SPINNER: [&'static str; 7] = [
     "."
 ];
 
-pub enum TermSubState {
-    Load {
-        step: usize,
-        timer: f32,
-    },
-    Main {
-        index: usize
-    },
-    Projects {
-        selected_project_index: usize,
-        project_about_scroll: usize,
-        main_focus: bool,
-    },
-    Resume {
-
-    },
-    Contact {
-        
-    }
-}
-
-pub struct ProjectState {
-    
-}
-
-fn generate_project_layout(term_size: Rect) -> Vec<String> {
-    let new_buffer = Vec::new();
-
-    new_buffer
-}
-
-impl Default for TermSubState {
-    fn default() -> Self {
-        return TermSubState::Load { step: 0, timer: 0f32 }
-    }
-}
+pub const BALLOON_SPINNER_CHARS: [char; 7] = [
+    '.',
+    'o',
+    'O',
+    '°',
+    'O',
+    'o',
+    '.'
+];

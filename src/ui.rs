@@ -7,6 +7,7 @@ pub struct UiContext {
     pub right_pressed: bool,
     pub left_pressed: bool,
     pub enter_pressed: bool,
+    pub back_pressed: bool,
 }
 
 impl UiContext {
@@ -16,6 +17,7 @@ impl UiContext {
         self.left_pressed = false;
         self.right_pressed = false;
         self.enter_pressed = false;
+        self.back_pressed = false;
     }
 }
 
@@ -65,8 +67,11 @@ pub fn handle_ui(screen_w: f32, screen_h: f32, ui_context: &mut UiContext, ui_sk
         let left_button_position = generate_pos(3f32, 1f32, screen_w, screen_h);
         ui_context.left_pressed = ui.button(Some(left_button_position), "←");
 
-        let right_button_position =  generate_pos(1f32, 1f32, screen_w, screen_h)   ;
+        let right_button_position =  generate_pos(1f32, 1f32, screen_w, screen_h);
         ui_context.right_pressed = ui.button(Some(right_button_position), "→");
+
+        let back_button_position = generate_pos(3f32, 2f32, screen_w, screen_h);
+        ui_context.back_pressed = ui.button(Some(back_button_position), "Ø");
     });
     root_ui().pop_skin();
 }
