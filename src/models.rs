@@ -1,4 +1,4 @@
-use macroquad::{color::Color, math::Rect, text::Font};
+use macroquad::{color::{Color, GREEN}, math::Rect, text::Font};
 use serde::Deserialize;
 
 
@@ -64,9 +64,20 @@ impl Default for TermSubState {
     }
 }
 
+#[derive(Clone)]
 pub struct Cell {
     pub char: char,
     pub foreground_color: &'static Color,
     pub background_color: Option<&'static Color>,
 }
 
+
+impl Default for Cell {
+    fn default() -> Self {
+        Cell {
+            char: ' ',
+            foreground_color: &GREEN,
+            background_color: None
+        }
+    }
+}

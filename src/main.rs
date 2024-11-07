@@ -3,7 +3,7 @@ use models::{Cell, Panel, TermSubState, TerminalState};
 use projects::{setup_projects, update_project_buffer};
 use terminal_templates::{generate_highlight_box, BALLOON_SPINNER, BALLOON_SPINNER_CHARS, LOAD_TEMPLATE, SAND_SPINNER};
 use ui::UiContext;
-use utils::overflow_sub;
+use utils::{highlight_cells, overflow_sub, reset_all_highlights};
 
 
 use std::default::Default;
@@ -125,48 +125,6 @@ async fn main() {
     }
 }
 
-
-fn draw_terminal(terminal_state: &TerminalState) {
-
-    let (screen_w, screen_h) = screen_size();
-    
-    let term_col_count = terminal_state.line_buffer.iter()
-        .map(|line| line.chars().count())
-        .max().unwrap() as f32;
-    let term_row_count = terminal_state.line_buffer.len() as f32;
-
-    let vertical_padding = (screen_h - term_row_count * terminal_state.font_size) / 2f32;
-    let horizontal_padding = (screen_w - term_col_count * terminal_state.font_size / 2f32) / 2f32;
-
-    for rect in &terminal_state.highlighted_boxes {
-        draw_rectangle(horizontal_padding + rect.x as f32 * terminal_state.font_size / 2f32 - screen_w / 2f32, 
-            vertical_padding + rect.y as f32 * terminal_state.font_size - screen_h / 2f32 + (terminal_state.font_size / 5f32), 
-            rect.w * terminal_state.font_size / 2f32, 
-            rect.h * terminal_state.font_size, WHITE);
-    }
-
-    let mut row = 1f32;
-    for index in terminal_state.line_index..(terminal_state.line_buffer.len()) {
-        let mut col = 1f32;
-
-        for character in terminal_state.line_buffer[index].chars() {
-            let char_x = horizontal_padding + col * terminal_state.font_size / 2f32 - screen_w / 2f32;
-            let char_y = vertical_padding + row * terminal_state.font_size - screen_h / 2f32;
-
-            if let Some(font) = &terminal_state.font {
-                draw_text_ex(&character.to_string(), char_x, char_y, TextParams {
-                    font: Some(font),
-                    font_size: terminal_state.font_size as u16,
-                    color: GREEN,
-                    ..Default::default()
-                });
-            }
-            col += 1f32;
-        }
-        row += 1.;
-    }
-}
-
 pub fn draw_terminal_cells(terminal_state: &TerminalState) {
     let (screen_w, screen_h) = screen_size();
 
@@ -207,7 +165,6 @@ pub fn draw_terminal_cells(terminal_state: &TerminalState) {
 }
 
 fn setup_loading_state(terminal_state: &mut TerminalState) {
-    let (screen_x, screen_y) = screen_size();
     terminal_state.sub_state = TermSubState::Load { step: 0 , timer: 0f32};
     terminal_state.cell_buffer = LOAD_TEMPLATE.iter().map(|line| {
         line.chars().map(|c| {
@@ -230,16 +187,15 @@ fn setup_loading_state(terminal_state: &mut TerminalState) {
 
     }).collect();
     terminal_state.cell_buffer.push(loading_str);
-
 }
 
 fn step_loading_state(terminal_state: &mut TerminalState) {
     if let TermSubState::Load { ref mut step, timer: _} = terminal_state.sub_state {
 
         let prev_spinner_char = BALLOON_SPINNER_CHARS[*step % BALLOON_SPINNER_CHARS.len()];
-        if *step >= BALLOON_SPINNER_CHARS.len() * 2 && false {
-            //setup_main_state(terminal_state);
-            //return;
+        if *step >= BALLOON_SPINNER_CHARS.len() * 2 {
+            setup_main_state(terminal_state);
+            return;
         } else {
             *step = *step + 1;
         }
@@ -257,16 +213,25 @@ fn step_loading_state(terminal_state: &mut TerminalState) {
 }
 
 pub fn setup_main_state(terminal_state: &mut TerminalState) {
-    let (screen_x, screen_y) = screen_size();
 
     terminal_state.sub_state = TermSubState::Main { index: 0 };
 
     terminal_state.font_size = 48.;
+    terminal_state.cell_buffer = terminal_templates::MAIN_TEMPLATE.iter().map(|line| {
+        line.chars().map(|c| {
+            Cell {
+                char: c,
+                background_color: None,
+                foreground_color: &GREEN
+            }
+        }).collect()
+    }).collect();
     terminal_state.line_buffer = terminal_templates::MAIN_TEMPLATE
         .to_vec().iter().map(|val| val.to_string()).collect();
 
-    terminal_state.highlighted_boxes = vec![generate_highlight_box(1).expect("Should return a box")];
-
+    let high_light_box = generate_highlight_box(1).expect("Problem generating highlight box from main template");
+    highlight_cells(&high_light_box, terminal_state, &WHITE)
+    //terminal_state.highlighted_boxes = vec![generate_highlight_box(1).expect("Should return a box")];
 
 }
 
@@ -285,6 +250,9 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
 
     let project_count = terminal_state.projects.len();
 
+    let mut new_main_index : Option<usize> = None;
+
+
     match &mut terminal_state.sub_state {
         TermSubState::Main { ref mut index } => {
             let mut index_changed = false;
@@ -301,6 +269,9 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
                     *index -= 1;
                 }
             }
+            if index_changed {
+                new_main_index = Some(*index);
+            }
             else if enter_pressed {
                 match index {
                     0 => {
@@ -316,10 +287,6 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
 
                 };
                 return;
-            }
-
-            if index_changed {
-                terminal_state.highlighted_boxes = vec![generate_highlight_box(*index + 1).expect("Input should always return a box")];
             }
         }
         TermSubState::Projects { ref mut selected_project_index, project_about_scroll, main_focus, ref mut panels } => {
@@ -344,6 +311,12 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
 
         _ => ()
 
+    }
+
+    if let Some(index) = new_main_index {
+        reset_all_highlights(terminal_state);
+        let highlight_box = generate_highlight_box(index + 1).expect("Couldn't create highlight box");
+        highlight_cells(&highlight_box, terminal_state, &WHITE);
     }
 }
 

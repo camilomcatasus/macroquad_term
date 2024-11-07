@@ -40,7 +40,7 @@ pub fn generate_highlight_box(index: usize) -> Option<Rect> {
 
     let count = MAIN_TEMPLATE[coords.1][coords.0..].find(" ")?;
 
-    Some(Rect { x: (coords.0 + 1) as f32, y: coords.1 as f32, w: count as f32, h: 1 as f32 } )
+    Some(Rect { x: (coords.0 ) as f32, y: (coords.1 - 1) as f32, w: count as f32, h: 1 as f32 } )
 }
 
 pub const SAND_SPINNER: [&'static str;35] = [

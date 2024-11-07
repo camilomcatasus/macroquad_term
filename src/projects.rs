@@ -1,6 +1,6 @@
 use macroquad::{input::utils, math::Rect};
 
-use crate::{models::{Panel, ProjectInfo, TermSubState, TerminalState}, utils::generate_panels_buffer};
+use crate::{models::{Panel, ProjectInfo, TermSubState, TerminalState}, utils::{generate_cells_from_panels, generate_panels_buffer}};
 
 const PROJECT_SIDE_WIDTH: usize = 21;
 const PROJECT_ART_HEIGHT: usize = 8;
@@ -48,7 +48,7 @@ pub fn setup_projects(terminal_state: &mut TerminalState) {
     //let first_project_str = &projects_str[0].clone();
 
     terminal_state.highlighted_boxes = Vec::new();
-    terminal_state.line_buffer = generate_panels_buffer(&project_panels, TERM_WIDTH, TERM_HEIGHT);
+    terminal_state.cell_buffer = generate_cells_from_panels(&project_panels, TERM_WIDTH, TERM_HEIGHT);
     terminal_state.sub_state = TermSubState::Projects { selected_project_index: 0, 
         project_about_scroll: 0, 
         main_focus: true, 
