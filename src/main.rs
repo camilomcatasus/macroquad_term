@@ -1,5 +1,5 @@
 use macroquad::{miniquad::window::screen_size, prelude::*};
-use models::{Cell, Panel, TermSubState, TerminalState};
+use models::{Cell, FontType, Panel, TermSubState, TerminalState};
 use projects::{setup_projects, update_project_buffer};
 use terminal_templates::{generate_highlight_box, BALLOON_SPINNER, BALLOON_SPINNER_CHARS, LOAD_TEMPLATE, SAND_SPINNER};
 use ui::UiContext;
@@ -12,6 +12,7 @@ mod models;
 mod ui;
 mod projects;
 mod utils;
+mod resume;
 
 #[macroquad::main("TerminalSite")]
 async fn main() {
@@ -26,13 +27,13 @@ async fn main() {
     let mut term_render_target = render_target(screen_w as u32, screen_h as u32);
     term_render_target.texture.set_filter(FilterMode::Nearest);
 
-    let font = load_ttf_font("TerminalFont.ttf").await.unwrap();
+    let default_font = load_ttf_font("TerminalFont.ttf").await.unwrap();
 
     let mut terminal_state = TerminalState::default();
     terminal_state.font_size = 18.;
     terminal_state.terminal_width_px = screen_w;
     terminal_state.terminal_height_px = screen_h;
-    terminal_state.font = Some(font.clone());
+    terminal_state.default_font = Some(default_font.clone());
     terminal_state.projects = project_data;
     setup_loading_state(&mut terminal_state);
 
@@ -52,7 +53,7 @@ async fn main() {
     const LOADING_STEP_TIME: f32 = 0.08;
     
     let mut ui_context = ui::UiContext::default();
-    let ui_skin = ui::create_ui_skin(&font);
+    let ui_skin = ui::create_ui_skin(&default_font);
     loop {
         let (new_screen_w, new_screen_h) = screen_size();
         if new_screen_w != screen_w || new_screen_h != screen_h {
@@ -128,10 +129,12 @@ async fn main() {
 pub fn draw_terminal_cells(terminal_state: &TerminalState) {
     let (screen_w, screen_h) = screen_size();
 
-    let font = match &terminal_state.font {
+    let mut font = match &terminal_state.default_font {
         Some(val) => val,
         None => panic!("Could not load font correctly")
     };
+
+    let mut previous_font_type = FontType::Default;
     
     let term_col_count = terminal_state.cell_buffer[0].len() as f32;
     let term_row_count = terminal_state.cell_buffer.len() as f32;
@@ -141,6 +144,14 @@ pub fn draw_terminal_cells(terminal_state: &TerminalState) {
 
     for (cell_y, cell_line) in terminal_state.cell_buffer.iter().enumerate() {
         for (cell_x, cell) in cell_line.iter().enumerate() {
+
+            if cell.font_type != previous_font_type {
+
+                font = Some(match cell.font_type {
+                    FontType::Default => terminal_state.default_font,
+                });
+            }
+
 
             if let Some(background_color) = cell.background_color {
                 draw_rectangle(horizontal_padding + cell_x as f32 * terminal_state.font_size / 2f32 - screen_w / 2f32, 
@@ -172,6 +183,7 @@ fn setup_loading_state(terminal_state: &mut TerminalState) {
                 char: c,
                 foreground_color: &GREEN,
                 background_color: None,
+                font_type: FontType::Default
             }
         }).collect()
 
@@ -182,7 +194,8 @@ fn setup_loading_state(terminal_state: &mut TerminalState) {
         Cell {
             char: c,
             background_color: None,
-            foreground_color: &GREEN
+            foreground_color: &GREEN,
+            font_type: FontType::Default
         }
 
     }).collect();
@@ -222,7 +235,8 @@ pub fn setup_main_state(terminal_state: &mut TerminalState) {
             Cell {
                 char: c,
                 background_color: None,
-                foreground_color: &GREEN
+                foreground_color: &GREEN,
+                font_type: FontType::Default
             }
         }).collect()
     }).collect();

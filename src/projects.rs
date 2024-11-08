@@ -1,6 +1,6 @@
-use macroquad::{input::utils, math::Rect};
+use macroquad::{color::WHITE, input::utils, math::Rect};
 
-use crate::{models::{Panel, ProjectInfo, TermSubState, TerminalState}, utils::{generate_cells_from_panels, generate_panels_buffer}};
+use crate::{models::{Panel, ProjectInfo, TermSubState, TerminalState}, terminal_templates::generate_highlight_box, utils::{generate_cells_from_panels, highlight_cells}};
 
 const PROJECT_SIDE_WIDTH: usize = 21;
 const PROJECT_ART_HEIGHT: usize = 8;
@@ -47,7 +47,14 @@ pub fn setup_projects(terminal_state: &mut TerminalState) {
     
     //let first_project_str = &projects_str[0].clone();
 
-    terminal_state.highlighted_boxes = Vec::new();
+    let highlighted_project = Rect {
+        x: (project_panels[PROJECTS_PANEL_INDEX].offset_x ) as f32,
+        y: (project_panels[PROJECTS_PANEL_INDEX].offset_y + 1) as f32,
+        w: project_panels[PROJECTS_PANEL_INDEX].text[0].len() as f32,
+        h: 1f32
+    };
+
+    highlight_cells(&highlighted_project, terminal_state, &WHITE);
     terminal_state.cell_buffer = generate_cells_from_panels(&project_panels, TERM_WIDTH, TERM_HEIGHT);
     terminal_state.sub_state = TermSubState::Projects { selected_project_index: 0, 
         project_about_scroll: 0, 
@@ -64,7 +71,9 @@ pub fn update_project_buffer(
     //for project
 
 
-    if let TermSubState::Projects { selected_project_index, project_about_scroll, main_focus, panels} = &mut terminal_state.sub_state {
+    let mut highlighted_project: Option<Rect> = None;
+
+    if let TermSubState::Projects { selected_project_index, project_about_scroll, ref main_focus , ref mut panels} = terminal_state.sub_state {
         
 
         //let fitted_about_strings = fit_strings_to_size(TERM_WIDTH - PROJECT_SIDE_WIDTH - 3, TERM_HEIGHT - 2, project_about_scroll, &project_data[selected_project_index].about);
@@ -81,15 +90,28 @@ pub fn update_project_buffer(
         });
 
         if *main_focus {
-            panels[PROJECTS_PANEL_INDEX].text[*selected_project_index] = format!("> {}", panels[PROJECTS_PANEL_INDEX].text[*selected_project_index]);
+            panels[PROJECTS_PANEL_INDEX].text[selected_project_index] = format!("> {}", panels[PROJECTS_PANEL_INDEX].text[selected_project_index]);
         }
 
-        terminal_state.highlighted_boxes = Vec::new();
-        terminal_state.line_buffer = crate::utils::generate_panels_buffer(panels, TERM_WIDTH, TERM_HEIGHT);
-        //panic!("Updated project buffer");
+        {
+
+        highlighted_project = Some(Rect {
+            x: (panels[PROJECTS_PANEL_INDEX].offset_x + 1) as f32,
+            y: (panels[PROJECTS_PANEL_INDEX].offset_y + selected_project_index) as f32,
+            w: (panels[PROJECTS_PANEL_INDEX].text[selected_project_index].len()) as f32,
+            h: 1f32,
+        });
+
+        }
+        terminal_state.cell_buffer = generate_cells_from_panels(panels, TERM_WIDTH, TERM_HEIGHT);
     }
     else {
         panic!("Update project buffer should only be called if sub_state is project");
+    }
+
+    if let Some(rect) = highlighted_project {
+        highlight_cells(&rect, terminal_state, &WHITE);
+
     }
 }
 

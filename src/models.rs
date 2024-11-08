@@ -33,7 +33,11 @@ pub struct TerminalState {
     pub terminal_width_px: f32,
     pub terminal_height_px: f32,
     pub sub_state: TermSubState,
-    pub font: Option<Font>,
+    pub default_font: Option<Font>,
+    pub resume_normal: Option<Font>,
+    pub resume_bold: Option<Font>,
+    pub resume_italic: Option<Font>,
+    pub resume_italic_bold: Option<Font>,
 }
 
 pub enum TermSubState {
@@ -69,6 +73,7 @@ pub struct Cell {
     pub char: char,
     pub foreground_color: &'static Color,
     pub background_color: Option<&'static Color>,
+    pub font_type: FontType
 }
 
 
@@ -77,7 +82,17 @@ impl Default for Cell {
         Cell {
             char: ' ',
             foreground_color: &GREEN,
-            background_color: None
+            background_color: None,
+            font_type: FontType::Default
         }
     }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum FontType {
+    Default,
+    ResumeDefault,
+    ResumeBold,
+    ResumeItalic,
+    ResumeItalicBold,
 }
