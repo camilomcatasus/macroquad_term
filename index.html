@@ -17,7 +17,9 @@
             z-index: 0;
         }
     </style>
-    <link data-trunk rel="copy-file" href="TerminalFont.ttf" />
+    <link data-trunk rel="copy-dir" href="fonts" />
+    <link data-trunk rel="copy-dir" href="projects" />
+    <link data-trunk rel="copy-file" href="resume.md"/>
     <link data-trunk rel="copy-file" href="projects.json" />
 </head>
 
@@ -25,7 +27,20 @@
     <canvas id="glcanvas" tabindex='1'></canvas>
     <!-- Minified and statically hosted version of https://github.com/not-fl3/miniquad/blob/master/native/sapp-wasm/js/gl.js -->
     <script src="https://not-fl3.github.io/miniquad-samples/gl.js"></script>
+    <script>
+
+
+        register_plugin = function(importObject)  {
+            importObject.env.open_new_tab = function (ptr, len) {
+                let url = UTF8ToString(ptr, len);
+                console.log(url, ptr, len);
+                window.open(url, '_blank').focus();
+            }
+        }
+
+        miniquad_add_plugin({register_plugin}); 
+    </script>
     <script>load("{outputwasm}");</script> <!-- Your compiled wasm file -->
-</body>
+   </body>
 
 </html>

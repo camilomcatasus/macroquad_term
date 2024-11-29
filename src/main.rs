@@ -1,45 +1,55 @@
-use macroquad::{miniquad::window::screen_size, prelude::*};
-use models::{Cell, FontType, Panel, TermSubState, TerminalState};
+
+use macroquad::{miniquad::window::{dpi_scale, screen_size}, prelude::*};
+use models::{Cell, FontType, TermSubState, TerminalState};
 use projects::{setup_projects, update_project_buffer};
-use terminal_templates::{generate_highlight_box, BALLOON_SPINNER, BALLOON_SPINNER_CHARS, LOAD_TEMPLATE, SAND_SPINNER};
+use resume::{setup_resume, update_resume_buffer};
+use terminal_templates::{generate_highlight_box, BALLOON_SPINNER, BALLOON_SPINNER_CHARS, LOAD_TEMPLATE};
 use ui::UiContext;
 use utils::{highlight_cells, overflow_sub, reset_all_highlights};
+use std::{cmp::min, default::Default};
 
-
-use std::default::Default;
+mod opener;
+mod background_loading;
+mod loading_screen;
 mod terminal_templates;
 mod models;
 mod ui;
 mod projects;
 mod utils;
 mod resume;
+mod markdown_renderer;
 
-#[macroquad::main("TerminalSite")]
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "CamTerm".to_string(),
+        fullscreen: true,
+        high_dpi: true,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
-
-
-    let projects_file = load_file("projects.json").await.expect("could not load projects.json");
-    let projects_string = String::from_utf8(projects_file).expect("Projects were not in utf8");
-
-    let project_data: Vec<models::ProjectInfo> = serde_json::from_str(&projects_string).expect("Could not deserialize project info");
-
     let (mut screen_w,mut screen_h) = screen_size();
+    dpi_scale();
+
+
+    debug!("Miniquad screen size: {:?}", (screen_w, screen_h));
+    debug!("Dpi scale: {}", dpi_scale());
     let mut term_render_target = render_target(screen_w as u32, screen_h as u32);
     term_render_target.texture.set_filter(FilterMode::Nearest);
 
-    let default_font = load_ttf_font("TerminalFont.ttf").await.unwrap();
-
-    let mut terminal_state = TerminalState::default();
-    terminal_state.font_size = 18.;
-    terminal_state.terminal_width_px = screen_w;
-    terminal_state.terminal_height_px = screen_h;
-    terminal_state.default_font = Some(default_font.clone());
-    terminal_state.projects = project_data;
-    setup_loading_state(&mut terminal_state);
+    let mut terminal_state = TerminalState {
+        default_font: None,
+        projects: Vec::new(),
+        font_size: 38f32,
+        terminal_width_px: screen_w,
+        terminal_height_px: screen_h,
+        ..Default::default()
+    };
 
     let mut material_params = MaterialParams::default();
 
-    let mut time = 0.1f32;
     material_params.uniforms.push(UniformDesc::new("iTime", UniformType::Float1));
 
     let material = load_material(
@@ -50,10 +60,13 @@ async fn main() {
         material_params,
     ).unwrap();
 
-    const LOADING_STEP_TIME: f32 = 0.08;
-    
+    loading_screen::run_loading_screen(&mut terminal_state, &material).await;
+    setup_main_state(&mut terminal_state);
+
     let mut ui_context = ui::UiContext::default();
-    let ui_skin = ui::create_ui_skin(&default_font);
+    let mut time = 0.1f32;
+    let ui_skin = ui::create_ui_skin(terminal_state.default_font.as_ref().unwrap());
+    let button_skin = ui::button_ui_skin(terminal_state.default_font.as_ref().unwrap());
     loop {
         let (new_screen_w, new_screen_h) = screen_size();
         if new_screen_w != screen_w || new_screen_h != screen_h {
@@ -62,13 +75,12 @@ async fn main() {
 
             term_render_target = render_target(screen_w as u32, screen_h as u32);
             term_render_target.texture.set_filter(FilterMode::Nearest);
-
-
+            debug!("New screen size: {:?}", (screen_w, screen_h));
         }
 
         set_default_camera();
-        ui::handle_ui(screen_w, screen_h, &mut ui_context, &ui_skin);
-        handle_input(&mut terminal_state, &ui_context);
+        ui::handle_ui(screen_w, screen_h, &mut ui_context, &ui_skin, &button_skin, &mut terminal_state);
+        handle_input(&mut terminal_state, &ui_context).await;
         ui_context.reset();
 
         set_camera(&Camera2D {
@@ -78,35 +90,12 @@ async fn main() {
             ..Default::default()
         });
 
-        match &terminal_state.sub_state {
-            TermSubState::Load { step, mut timer } => {
-                timer += get_frame_time();
-                if timer > LOADING_STEP_TIME {
-                    timer = 0f32;
-                    terminal_state.sub_state = TermSubState::Load { step: *step, timer };
-                    step_loading_state(&mut terminal_state);
-                }
-                else {
-                    terminal_state.sub_state = TermSubState::Load { step: *step, timer };
-                }
-            }
-            TermSubState::Projects { selected_project_index, project_about_scroll, main_focus, panels } => {
-
-                //projects::update_project_buffer(&mut terminal_state, &project_data);
-            }
-            _ => (),
-        }
-
         clear_background(DARKGRAY);
-        draw_terminal_cells(&terminal_state);
-
+        draw_terminal_cells(&mut terminal_state, Some(&ui_context));
         set_default_camera();
-
-
         gl_use_material(&material);
         material.set_uniform("iTime", time);
         time += 0.02;
-
 
         draw_texture_ex(
             &term_render_target.texture,
@@ -119,52 +108,66 @@ async fn main() {
             },
         );
 
-
-
         gl_use_default_material();
         next_frame().await
     }
 }
 
-pub fn draw_terminal_cells(terminal_state: &TerminalState) {
+const FONT_RATIO : f32 = 40.0 / 1440.0;
+
+pub fn draw_terminal_cells(terminal_state: &mut TerminalState, ui_context: Option<&UiContext>) {
     let (screen_w, screen_h) = screen_size();
 
-    let mut font = match &terminal_state.default_font {
-        Some(val) => val,
-        None => panic!("Could not load font correctly")
-    };
+    let mut font = terminal_state.default_font.as_ref();
 
-    let mut previous_font_type = FontType::Default;
+    let mut previous_font_type = &FontType::Default;
     
     let term_col_count = terminal_state.cell_buffer[0].len() as f32;
     let term_row_count = terminal_state.cell_buffer.len() as f32;
+
+    terminal_state.font_size = screen_h * FONT_RATIO;
 
     let vertical_padding = (screen_h - term_row_count * terminal_state.font_size) / 2f32;
     let horizontal_padding = (screen_w - term_col_count * terminal_state.font_size / 2f32) / 2f32;
 
     for (cell_y, cell_line) in terminal_state.cell_buffer.iter().enumerate() {
         for (cell_x, cell) in cell_line.iter().enumerate() {
-
-            if cell.font_type != previous_font_type {
-
-                font = Some(match cell.font_type {
-                    FontType::Default => terminal_state.default_font,
-                });
-            }
-
-
             if let Some(background_color) = cell.background_color {
                 draw_rectangle(horizontal_padding + cell_x as f32 * terminal_state.font_size / 2f32 - screen_w / 2f32, 
-                    vertical_padding + cell_y as f32 * terminal_state.font_size - screen_h / 2f32 + (terminal_state.font_size / 5f32), 
+                    vertical_padding + (cell_y as f32 - 1f32) * terminal_state.font_size - screen_h / 2f32 + (terminal_state.font_size / 5f32), 
                     terminal_state.font_size / 2f32, 
                     terminal_state.font_size, 
                     *background_color);
+            }
+        }
+    }
+
+    for (cell_y, cell_line) in terminal_state.cell_buffer.iter().enumerate() {
+        for (cell_x, cell) in cell_line.iter().enumerate() {
+
+            if &cell.font_type != previous_font_type {
+
+                font = match cell.font_type {
+                    FontType::Default => terminal_state.default_font.as_ref(),
+                    FontType::ResumeBold => terminal_state.resume_bold_font.as_ref(),
+                    FontType::ResumeItalic => terminal_state.resume_italic_font.as_ref(),
+                    FontType::ResumeDefault => terminal_state.resume_normal_font.as_ref(),
+                    FontType::ResumeItalicBold => terminal_state.resume_italic_bold_font.as_ref(),
+                };
+
+                previous_font_type = &cell.font_type;
+            }
+            
+            if let Some(inner_ui_context) = ui_context {
+                if inner_ui_context.back_pressed {
+                    let test = 0;
+                }
             }
 
             let char_x = horizontal_padding + cell_x as f32 * terminal_state.font_size / 2f32 - screen_w / 2f32;
             let char_y = vertical_padding + cell_y as f32 * terminal_state.font_size - screen_h / 2f32;
             draw_text_ex(&cell.char.to_string(), char_x, char_y, TextParams {
-                font: Some(font),
+                font,
                 font_size: terminal_state.font_size as u16,
                 color: *cell.foreground_color,
                 ..Default::default()
@@ -173,56 +176,6 @@ pub fn draw_terminal_cells(terminal_state: &TerminalState) {
         }
     }
 
-}
-
-fn setup_loading_state(terminal_state: &mut TerminalState) {
-    terminal_state.sub_state = TermSubState::Load { step: 0 , timer: 0f32};
-    terminal_state.cell_buffer = LOAD_TEMPLATE.iter().map(|line| {
-        line.chars().map(|c| {
-            models::Cell {
-                char: c,
-                foreground_color: &GREEN,
-                background_color: None,
-                font_type: FontType::Default
-            }
-        }).collect()
-
-    }).collect();
-    let rect_length = terminal_state.cell_buffer[0].len();
-    let padding = " ".repeat(( rect_length - 9 )/ 2);
-    let loading_str : Vec<Cell> = format!("{}{} Loading", padding, BALLOON_SPINNER[0]).chars().map(|c| {
-        Cell {
-            char: c,
-            background_color: None,
-            foreground_color: &GREEN,
-            font_type: FontType::Default
-        }
-
-    }).collect();
-    terminal_state.cell_buffer.push(loading_str);
-}
-
-fn step_loading_state(terminal_state: &mut TerminalState) {
-    if let TermSubState::Load { ref mut step, timer: _} = terminal_state.sub_state {
-
-        let prev_spinner_char = BALLOON_SPINNER_CHARS[*step % BALLOON_SPINNER_CHARS.len()];
-        if *step >= BALLOON_SPINNER_CHARS.len() * 2 {
-            setup_main_state(terminal_state);
-            return;
-        } else {
-            *step = *step + 1;
-        }
-
-        let new_spinner_char = BALLOON_SPINNER_CHARS[*step % BALLOON_SPINNER_CHARS.len()];
-
-        let cell_opt : Option<&mut Cell> = terminal_state.cell_buffer.last_mut().unwrap().iter_mut().find(|cell| {
-            cell.char == prev_spinner_char
-        });
-
-        if let Some(cell) = cell_opt {
-            cell.char = new_spinner_char;
-        }
-    }
 }
 
 pub fn setup_main_state(terminal_state: &mut TerminalState) {
@@ -249,9 +202,9 @@ pub fn setup_main_state(terminal_state: &mut TerminalState) {
 
 }
 
-fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
-    let down_input = is_key_pressed(KeyCode::Down) || is_key_pressed(KeyCode::S) || ui_context.down_pressed;
-    let up_input = is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::W) || ui_context.up_pressed;
+async fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
+    let down_input = is_key_pressed(KeyCode::Down) || is_key_pressed(KeyCode::S) || ui_context.down_pressed || mouse_wheel().1 < 0.0;
+    let up_input = is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::W) || ui_context.up_pressed || mouse_wheel().1 > 0.0;
     let left_pressed = is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::A) || ui_context.left_pressed;
     let right_pressed = is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) || ui_context.right_pressed;
     let enter_pressed = is_key_pressed(KeyCode::Enter) || ui_context.enter_pressed;
@@ -289,10 +242,10 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
             else if enter_pressed {
                 match index {
                     0 => {
-                        setup_projects(terminal_state);
+                        setup_projects(terminal_state).await;
                     }
                     1 => {
-                        //TermSubState::Resume {  }
+                        setup_resume(terminal_state).await;
                     }
                     2 => {
                         //TermSubState::Contact {  }
@@ -303,24 +256,53 @@ fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext) {
                 return;
             }
         }
-        TermSubState::Projects { ref mut selected_project_index, project_about_scroll, main_focus, ref mut panels } => {
+        TermSubState::Projects { ref mut selected_project_index, ref mut main_focus, ref mut project_about_scroll,..} => {
             if back_pressed {
                 setup_main_state(terminal_state);
                 return;
             }
-            if *main_focus {
+            if !*main_focus {
                 if up_input {
                     *selected_project_index = overflow_sub(&selected_project_index, project_count);
                 }
                 if down_input {
                     *selected_project_index = (*selected_project_index + 1) % project_count;
                 }
+
+            }
+            else {
+                if up_input {
+                    *project_about_scroll= project_about_scroll.saturating_sub(1);
+                }
+                if down_input {
+                    *project_about_scroll += 1;
+                }
+            }
+            if left_pressed {
+                *main_focus = true;
+            }
+            if right_pressed {
+                *main_focus = false;
             }
 
-            panels[projects::ABOUT_PANEL_INDEX].text = terminal_state.projects[*selected_project_index].about.clone();
-            panels[projects::ART_PANEL_INDEX].text = terminal_state.projects[*selected_project_index].ascii_art.clone();
+            update_project_buffer(terminal_state).await;
+        }
+        TermSubState::Resume(ref mut resume_panel) => {
+            if back_pressed {
+                setup_main_state(terminal_state);
+                return;
+            }
 
-            update_project_buffer(terminal_state);
+            if up_input && resume_panel.index != 0 {
+                resume_panel.index = resume_panel.index.saturating_sub(3);
+            }
+            if down_input && resume_panel.index != resume_panel.fitted_buffer.len() - resume_panel.height - 1 {
+                resume_panel.index += 3;
+                resume_panel.index = min(resume_panel.index, resume_panel.fitted_buffer.len() - resume_panel.height - 1);
+            }
+
+            update_resume_buffer(terminal_state);
+
         }
 
         _ => ()

@@ -1,6 +1,9 @@
-use macroquad::{color::WHITE, input::utils, math::Rect};
-
-use crate::{models::{Panel, ProjectInfo, TermSubState, TerminalState}, terminal_templates::generate_highlight_box, utils::{generate_cells_from_panels, highlight_cells}};
+use macroquad::prelude::*;
+use crate::models::Cell;
+use crate::{
+    markdown_renderer::render_markdown, models::{CellPanel, ProjectInfo, TermSubState, TerminalState}, 
+    utils::write_cell_panels_with_border
+};
 
 const PROJECT_SIDE_WIDTH: usize = 21;
 const PROJECT_ART_HEIGHT: usize = 8;
@@ -11,244 +14,137 @@ pub const ABOUT_PANEL_INDEX: usize = 0;
 pub const ART_PANEL_INDEX: usize = 1;
 pub const PROJECTS_PANEL_INDEX: usize = 2;
 
-pub fn setup_projects(terminal_state: &mut TerminalState) {
+
+pub async fn setup_projects(terminal_state: &mut TerminalState) {
 
     let mut projects_str: Vec<String> = terminal_state.projects.iter().map(|project: &ProjectInfo| project.name.clone()).collect();
-    projects_str[0] = format!("> {}", &projects_str[0]);
 
     let project = &terminal_state.projects[0];
-    let project_panels = vec![
-        // About panel
-        Panel {
-            text: project.about.clone(),
-            index: 0,
-            width: TERM_WIDTH - PROJECT_SIDE_WIDTH + 1,
-            height: TERM_HEIGHT,
-            offset_y: 0,
-            offset_x: 0
-        },
-        Panel {
-            text: project.ascii_art.clone(),
-            index: 0,
-            width: PROJECT_SIDE_WIDTH,
-            height: PROJECT_ART_HEIGHT + 1,
-            offset_x: TERM_WIDTH - PROJECT_SIDE_WIDTH,
-            offset_y: 0
-        },
-        Panel {
-            text: projects_str,
-            index: 0,
-            width: PROJECT_SIDE_WIDTH,
-            height: TERM_HEIGHT - PROJECT_ART_HEIGHT,
-            offset_y: PROJECT_ART_HEIGHT,
-            offset_x: TERM_WIDTH - PROJECT_SIDE_WIDTH
+
+    
+    if let None = terminal_state.loaded_projects.get(&project.markdown) {
+        let file_data = load_file(&format!("projects/{}", &project.markdown)).await.expect("Could not load markdown");
+        let text = String::from_utf8(file_data).expect("Could not parse markdown");
+        terminal_state.loaded_projects.insert(project.markdown.clone(), text);
+    };
+
+    let markdown = &terminal_state.loaded_projects[&project.markdown];
+
+    let mut about_panel = render_markdown(markdown, 
+        TERM_WIDTH - PROJECT_SIDE_WIDTH - 1, 
+        TERM_HEIGHT - 2);
+
+    about_panel.offset_x = 1;
+    about_panel.offset_y = 1;
+
+    about_panel.fit_buffer();
+
+    let art_panel = CellPanel::from_strings(&project.ascii_art, 
+        PROJECT_SIDE_WIDTH - 2, 
+        PROJECT_ART_HEIGHT - 2, 
+        TERM_WIDTH - PROJECT_SIDE_WIDTH + 1, 1);
+
+    let mut projects_panel = CellPanel::from_strings(&projects_str, 
+        PROJECT_SIDE_WIDTH - 2,
+        TERM_HEIGHT - PROJECT_ART_HEIGHT - 1, 
+        TERM_WIDTH - PROJECT_SIDE_WIDTH + 1, 
+        PROJECT_ART_HEIGHT );
+
+    if let Some(cell_line) = projects_panel.cells.get_mut(0) {
+        for cell in cell_line.iter_mut() {
+            cell.background_color = Some(&WHITE);
         }
+        cell_line.insert(0, Cell::new(' '));
+        cell_line.insert(0, Cell::new('>'));
+    }
+
+    projects_panel.box_color = Some(&WHITE);
+    projects_panel.fit_buffer();
+
+    let cell_project_panels = vec![
+        about_panel,
+        art_panel,
+        projects_panel
     ];
     
     //let first_project_str = &projects_str[0].clone();
 
-    let highlighted_project = Rect {
-        x: (project_panels[PROJECTS_PANEL_INDEX].offset_x ) as f32,
-        y: (project_panels[PROJECTS_PANEL_INDEX].offset_y + 1) as f32,
-        w: project_panels[PROJECTS_PANEL_INDEX].text[0].len() as f32,
-        h: 1f32
-    };
-
-    highlight_cells(&highlighted_project, terminal_state, &WHITE);
-    terminal_state.cell_buffer = generate_cells_from_panels(&project_panels, TERM_WIDTH, TERM_HEIGHT);
-    terminal_state.sub_state = TermSubState::Projects { selected_project_index: 0, 
+    terminal_state.cell_buffer = write_cell_panels_with_border(&cell_project_panels, TERM_WIDTH, TERM_HEIGHT);
+    terminal_state.sub_state = TermSubState::Projects { 
+        selected_project_index: 0, 
         project_about_scroll: 0, 
-        main_focus: true, 
-        panels: project_panels 
+        main_focus: false, 
+        cell_panels: cell_project_panels,
     };
 }
 
-pub fn update_project_buffer( 
+pub async fn update_project_buffer( 
     terminal_state: &mut TerminalState, 
 ) {
-    //print_bool_map(&buffer_map);
-
-    //for project
-
-
-    let mut highlighted_project: Option<Rect> = None;
-
-    if let TermSubState::Projects { selected_project_index, project_about_scroll, ref main_focus , ref mut panels} = terminal_state.sub_state {
+    if let TermSubState::Projects { selected_project_index, project_about_scroll, ref main_focus, ref mut cell_panels, .. } = terminal_state.sub_state {
         
+        let selected_project = &terminal_state.projects[selected_project_index];
+        
+        if let None = terminal_state.loaded_projects.get(&selected_project.markdown) {
+            let file_data = load_file(&format!("projects/{}", &selected_project.markdown)).await.expect("");
+            let text = String::from_utf8(file_data).expect("Could not parse markdown text");
+            terminal_state.loaded_projects.insert(selected_project.markdown.clone(), text);
+        }
 
-        //let fitted_about_strings = fit_strings_to_size(TERM_WIDTH - PROJECT_SIDE_WIDTH - 3, TERM_HEIGHT - 2, project_about_scroll, &project_data[selected_project_index].about);
-        //write_strs_to_char_buffer(1, 1, &fitted_about_strings, &mut written_buffer);
 
-        //write_strings_to_char_buffer(TERM_WIDTH - PROJECT_SIDE_WIDTH - 1, 1, &project_data[selected_project_index].ascii_art, &mut written_buffer);
+        let markdown = &terminal_state.loaded_projects[&selected_project.markdown];
 
-        //println!("{:#?}", new_buffer);
-        panels[PROJECTS_PANEL_INDEX].text.iter_mut().for_each(|line| {
-            if &line[0..2] == "> " {
-                *line = line[2..].to_string();
+        let mut about_panel = render_markdown(markdown, TERM_WIDTH - PROJECT_SIDE_WIDTH - 1, TERM_HEIGHT - 2);
+        about_panel.offset_y = 1;
+        about_panel.offset_x = 1;
+        about_panel.index = project_about_scroll;
+        about_panel.fit_buffer();
+
+        cell_panels[ABOUT_PANEL_INDEX] = about_panel;
+
+        if let Some(projects_panel) = cell_panels.get_mut(PROJECTS_PANEL_INDEX) {
+
+            projects_panel.cells.iter_mut().for_each(|cell_line| {
+                if cell_line[0].char == '>' {
+                    cell_line.remove(0);
+                    cell_line.remove(0);
+                    
+                    cell_line.iter_mut().for_each(|cell| {
+                        cell.background_color = None;
+                    })
+                }
+            });
+
+            if let Some(cell_line) = projects_panel.cells.get_mut(selected_project_index) {
+                cell_line.iter_mut().for_each(|cell| {
+                    cell.background_color = Some(&WHITE);
+                });
+
+                cell_line.insert(0, Cell::new(' '));
+                cell_line.insert(0, Cell::new('>'));
+            }
+            projects_panel.fit_buffer();
+        }
+
+        if let Some(art_panel) = cell_panels.get_mut(ART_PANEL_INDEX) {
+            art_panel.update_from_strings(&terminal_state.projects[selected_project_index].ascii_art);
+        }
+
+        match main_focus {
+            true => {
+                cell_panels[PROJECTS_PANEL_INDEX].box_color = None; 
+                cell_panels[ABOUT_PANEL_INDEX].box_color = Some(&WHITE);
+                terminal_state.cell_buffer = write_cell_panels_with_border(&cell_panels, TERM_WIDTH, TERM_HEIGHT);
+            },
+            false => {
+                cell_panels[ABOUT_PANEL_INDEX].box_color = None;
+                cell_panels[PROJECTS_PANEL_INDEX].box_color = Some(&WHITE);
+                terminal_state.cell_buffer = write_cell_panels_with_border(&cell_panels, TERM_WIDTH, TERM_HEIGHT);
             }
 
-        });
-
-        if *main_focus {
-            panels[PROJECTS_PANEL_INDEX].text[selected_project_index] = format!("> {}", panels[PROJECTS_PANEL_INDEX].text[selected_project_index]);
         }
-
-        {
-
-        highlighted_project = Some(Rect {
-            x: (panels[PROJECTS_PANEL_INDEX].offset_x + 1) as f32,
-            y: (panels[PROJECTS_PANEL_INDEX].offset_y + selected_project_index) as f32,
-            w: (panels[PROJECTS_PANEL_INDEX].text[selected_project_index].len()) as f32,
-            h: 1f32,
-        });
-
-        }
-        terminal_state.cell_buffer = generate_cells_from_panels(panels, TERM_WIDTH, TERM_HEIGHT);
     }
     else {
         panic!("Update project buffer should only be called if sub_state is project");
-    }
-
-    if let Some(rect) = highlighted_project {
-        highlight_cells(&rect, terminal_state, &WHITE);
-
-    }
-}
-
-fn fit_strings_to_size<'a>(
-    width: usize, 
-    height: usize, 
-    line_index: usize, 
-    strings: &'a Vec<String>) -> Vec<&'a str> {
-
-    let test : Vec<&str> =strings[line_index..]
-        .iter()
-        .flat_map(|line| line.split("\n"))
-        .flat_map(|line| {
-
-            let mut temp : Vec<&str> = Vec::new();
-            if line.len() > width {
-                let split_line = line.split_at(width);
-                temp.push(split_line.0);
-                temp.push(split_line.1);
-            } else {
-                temp.push(line);
-            }
-            temp
-
-        })
-        .take(height)
-        .collect();
-
-
-    test
-}
-
-fn write_strings_to_char_buffer(
-    offset_x: usize,
-    offset_y: usize,
-    parsed: &Vec<String>, 
-    char_buffer: &mut Vec<Vec<char>>) {
-    assert!(parsed.len() > 0 && parsed[0].len() > 0);
-    assert!(char_buffer.len() > parsed.len() + offset_y && 
-            char_buffer[0].len() > parsed[0].len() + offset_x, 
-        "char_buffer size: ({},{}) , parsed size: ({}, {}), offsets: ({}, {})",
-        char_buffer[0].len(),
-        char_buffer.len(),
-        parsed[0].len(),
-        parsed.len(),
-        offset_x,
-        offset_y);
-
-
-    parsed.iter().enumerate().for_each(|(line_index, line)| {
-        line.chars().enumerate().for_each(|(char_index, char_val)| {
-            char_buffer[offset_y + line_index][offset_x + char_index] = char_val;
-        });
-    })
-}
-
-fn print_bool_map(buf: &Vec<Vec<bool>>) {
-    for line in buf {
-        for c in line {
-            match c {
-                true => print!("1"),
-                false => print!("0")
-            }
-        }
-        println!("");
-    }
-}
-
-fn write_strs_to_char_buffer(
-    offset_x: usize,
-    offset_y: usize,
-    parsed: &Vec<&str>,
-    char_buffer: &mut Vec<Vec<char>>) {
-    assert!(parsed.len() > 0 && parsed[0].len() > 0);
-    assert!(char_buffer.len() > parsed.len() + offset_y && 
-            char_buffer[0].len() > parsed[0].len() + offset_x);
-
-
-    parsed.iter().enumerate().for_each(|(line_index, line)| {
-        line.chars().enumerate().for_each(|(char_index, char_val)| {
-            char_buffer[offset_y + line_index][offset_x + char_index] = char_val;
-        });
-    })
-}
-
-
-fn parse_cell_from_neighbors(up: bool,
-    down:bool, left: bool, right: bool) -> char {
-    match (up, down, left, right) {
-        (true, true, false, false) => '┃',
-        (false, false, true, true) => '━',
-        (true, true, false, true) => '┣',
-        (true, true, true, false) => '┫',
-        (true, false, true, true) => '┻',
-        (false, true, true, true) => '┳',
-        (true, true, true, true) => '╋',
-        (false, true, false, true) => '┏',
-        (false, true, true, false) => '┓',
-        (true, false, false, true) => '┗',
-        (true, false, true, false) => '┛',
-        (u, d, l, r) => panic!("up: {}, down: {}, left: {}, right: {}", u, d, l , r),
-
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_write_parsed() {
-        let mut char_buffer = vec![vec![' '; 8]; 8];
-        let parsed = vec![
-            String::from("_ _"),
-            String::from("0^0")
-        ];
-
-        write_strings_to_char_buffer(2, 2, &parsed, &mut char_buffer);
-
-
-        char_buffer.iter().for_each(|char_row| {
-            let output_str: String = char_row.into_iter().collect();
-            println!("{}", output_str);
-        });
-
-
-        assert!(char_buffer.eq(&vec![
-            vec![' '; 8],
-            vec![' '; 8],
-            vec![' ', ' ', '_', ' ', '_', ' ', ' ', ' '],
-            vec![' ', ' ', '0', '^', '0', ' ', ' ', ' '],
-            vec![' '; 8],
-            vec![' '; 8],
-            vec![' '; 8],
-            vec![' '; 8],
-        ]));
-
     }
 }

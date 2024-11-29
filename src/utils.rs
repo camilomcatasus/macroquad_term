@@ -1,27 +1,49 @@
-use macroquad::color::Color;
-use macroquad::math::Rect;
 
+use macroquad::prelude::*;
 use crate::TerminalState;
-use crate::models::{Cell, Panel};
+use crate::models::{Cell, CellPanel};
 
-pub fn generate_cells_from_panels(panels: &Vec<Panel>, term_width: usize, term_height: usize) -> Vec<Vec<Cell>> {
+
+pub fn write_cell_panels_with_border(
+    panels: &[CellPanel], 
+    term_width: usize, 
+    term_height: usize) -> Vec<Vec<Cell>> {
+
     let mut cell_buffer: Vec<Vec<Cell>> = vec![vec![Cell::default(); term_width]; term_height];
     let mut border_map: Vec<Vec<bool>> = vec![vec![false;term_width]; term_height];
 
     for panel in panels {
-        println!("{:#?}", panel);
-        for x in panel.offset_x..(panel.offset_x + panel.width) {
-            border_map[panel.offset_y][x] = true;
-            border_map[panel.offset_y + panel.height - 1][x] = true;
+        assert!(panel.offset_y > 0 
+            && panel.offset_y + panel.height < term_height
+            && panel.offset_x > 0
+            && panel.offset_x + panel.width < term_width, 
+        "Panel size: {:?} offset: {:?} does not fit inside terminal with border", (panel.width, panel.height), (panel.offset_x, panel.offset_y));
+
+        for x in (panel.offset_x - 1)..(panel.offset_x + panel.width + 1) {
+
+            border_map[panel.offset_y - 1][x] = true;
+            border_map[panel.offset_y + panel.height][x] = true;
+            if cell_buffer[panel.offset_y - 1][x].foreground_color == &GREEN {
+                cell_buffer[panel.offset_y - 1][x].foreground_color = panel.box_color.unwrap_or(&GREEN);
+            }
+            if cell_buffer[panel.offset_y + panel.height][x].foreground_color == &GREEN {
+                cell_buffer[panel.offset_y + panel.height][x].foreground_color = panel.box_color.unwrap_or(&GREEN);
+            }
         }
 
-        for y in panel.offset_y..(panel.offset_y + panel.height) {
-            border_map[y][panel.offset_x] = true;
-            border_map[y][panel.offset_x + panel.width - 1] = true;
+        for y in (panel.offset_y - 1)..(panel.offset_y + panel.height + 1) {
+            border_map[y][panel.offset_x - 1] = true;
+            border_map[y][panel.offset_x + panel.width] = true;
+
+            if cell_buffer[y][panel.offset_x - 1].foreground_color == &GREEN {
+                cell_buffer[y][panel.offset_x - 1].foreground_color = panel.box_color.unwrap_or(&GREEN);
+            }
+            if cell_buffer[y][panel.offset_x + panel.width].foreground_color == &GREEN {
+                cell_buffer[y][panel.offset_x + panel.width].foreground_color = panel.box_color.unwrap_or(&GREEN);
+            }
         }
 
-        let fitted_strings = fit_strings_to_size(panel.width - 2, panel.height - 2, panel.index, &panel.text);
-        write_strs_to_cell_buffer(panel.offset_x + 1, panel.offset_y + 1, &fitted_strings, &mut cell_buffer);
+        panel.write_to_buffer(&mut cell_buffer);
     }
 
     for y in 0..term_height {
@@ -37,7 +59,19 @@ pub fn generate_cells_from_panels(panels: &Vec<Panel>, term_width: usize, term_h
         }
     }
 
-    return cell_buffer;
+    cell_buffer
+}
+
+pub fn generate_cell_line(string: &str) -> Vec<Cell> {
+    string.chars().map(|c| {
+        Cell {
+            char: c,
+            background_color: None,
+            foreground_color: &GREEN,
+            font_type: crate::models::FontType::Default
+            
+        }
+    }).collect()
 }
 
 pub fn highlight_cells(rect: &Rect, terminal_state: &mut TerminalState, background_color: &'static Color) {
@@ -165,4 +199,13 @@ pub fn find_substr(cell_line: &Vec<crate::models::Cell>, substr: &str) -> Option
         }
     }
     None
+}
+
+pub fn print_cells(cell_buffer: &Vec<Vec<Cell>>) {
+    cell_buffer.iter().for_each(|line| {
+        line.iter().for_each(|cell| {
+            print!("{}", cell.char);
+        });
+        print!("\n");
+    })
 }

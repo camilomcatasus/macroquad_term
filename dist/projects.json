@@ -8,18 +8,8 @@
             "                 |" ,
             "                 |"
         ],
-        "about": [
-            "Game Project to learn about real time multiplayer techniques and strategies",
-            "Goals:",
-            "- Easy Host and Join Using Room Codes [x]",
-            "- Implement Reconcilliation           [x]",
-            "- Implement Interpolation             [ ]",
-            "- Implement Lag Compensation          [ ]",
-            "- 2-8 Player Multiplayer              [ ]",
-            "- Player Spectating                   [ ]",
-            "- Implement and Sync Shaders          [ ]"
-        ],
-        "url": ""
+        "markdown":  "multiplayer_pong.md",
+        "url": "multiplayer-pong"
     }, 
     {
         "name": "Easy Relay Server",
@@ -31,12 +21,20 @@
             "   o          o   ",
             "                  "
         ],
-        "about": [
-            "Library for making different types of relay websocket servers",
-            "Currently supports:",
-            "- 2 Person Relay",
-            "- Host Broadcast Relay"
+        "markdown":  "easy_relay_server.md",
+        "url": "easy-relay-server"
+    },
+    {
+        "name": "Terminal Website",
+        "ascii_art": [
+            "  .--.          ",
+            "  |__| .-------.",
+            "  |=.| |.-----.|",
+            "  |--| || DEV ||",
+            "  |  | |'-----'|",
+            "  |__|~')_____('"
         ],
-        "url": ""
+        "markdown": "terminal_website.md",
+        "url": "terminal-website"
     }
 ]
