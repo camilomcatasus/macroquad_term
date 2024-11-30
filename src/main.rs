@@ -1,6 +1,7 @@
 
 use macroquad::{miniquad::window::{dpi_scale, screen_size}, prelude::*};
 use models::{Cell, FontType, TermSubState, TerminalState};
+use opener::open_url;
 use projects::{setup_projects, update_project_buffer};
 use resume::{setup_resume, update_resume_buffer};
 use terminal_templates::{generate_highlight_box, BALLOON_SPINNER, BALLOON_SPINNER_CHARS, LOAD_TEMPLATE};
@@ -248,7 +249,7 @@ async fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext
                         setup_resume(terminal_state).await;
                     }
                     2 => {
-                        //TermSubState::Contact {  }
+                        open_url("mailto:camilomcatasus@gmail.com");
                     }
                     _ => panic!("")
 

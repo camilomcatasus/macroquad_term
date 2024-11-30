@@ -16,7 +16,7 @@ pub const LOAD_TEMPLATE: [&'static str; 10] = [
 "░                                   ░          ░                            ░   ░                  ░   ",
 ];
 
-pub const MAIN_TEMPLATE: [&'static str; 12] = [
+pub const MAIN_TEMPLATE: [&'static str; 11] = [
 "Welcome to CAMBUCHA.DEV (TM) TermLink",
 "Select One",
 "|==========================================|",
@@ -25,7 +25,6 @@ pub const MAIN_TEMPLATE: [&'static str; 12] = [
 "|               1.Projects                 |",
 "|               2.Resume                   |",
 "|               3.Contact                  |",
-"|               4.Snake                    |",
 "|                                          |",
 "|                                          |",
 "|==========================================|",
