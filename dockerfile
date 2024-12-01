@@ -3,6 +3,10 @@ FROM rust:latest
 
 # Install Trunk
 RUN cargo install trunk
+RUN cargo install --git https://github.com/camilomcatasus/trunk_repl
+RUN rustup update
+RUN rustup target add wasm32-unknown-unknown
+
 
 # Set the working directory
 WORKDIR /app
@@ -11,7 +15,7 @@ WORKDIR /app
 COPY . .
 
 # Build the project
-RUN trunk build --release
+RUN trunk build --release --verbose
 
 # Expose the desired port
 EXPOSE 8080
