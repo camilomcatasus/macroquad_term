@@ -2,6 +2,7 @@ use macroquad::prelude::*;
 use crate::{models::{Cell, TermSubState, TerminalState}, utils::print_cells};
 
 pub async fn setup_resume(terminal_state: &mut TerminalState) {
+    log::info!("Start of resume setup");
     const RESUME_W : usize = 80;
     const RESUME_H : usize = 20;
 
