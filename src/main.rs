@@ -246,6 +246,8 @@ async fn handle_input(terminal_state: &mut TerminalState, ui_context: &UiContext
                         setup_projects(terminal_state).await;
                     }
                     1 => {
+                        info!("Trying to setup resume");
+
                         setup_resume(terminal_state).await;
                     }
                     2 => {
