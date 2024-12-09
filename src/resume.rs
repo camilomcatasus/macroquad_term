@@ -6,8 +6,11 @@ pub async fn setup_resume(terminal_state: &mut TerminalState) {
     const RESUME_H : usize = 20;
 
     terminal_state.cell_buffer = vec![vec![Cell::default(); RESUME_W]; RESUME_H];
+    log::debug!("Attempting to download resume md");
     let mark_down_text = String::from_utf8(load_file("resume.md").await.expect("Could not load resume")).expect("Could not decode resume");
+    log::debug!("Downloaded resume md");
     let mut markdown_panel = crate::markdown_renderer::render_markdown(&mark_down_text, RESUME_W, RESUME_H);
+    log::debug!("Rendered Markdown");
 
 
     markdown_panel.fit_buffer();
