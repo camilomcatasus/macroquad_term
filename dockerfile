@@ -1,5 +1,5 @@
 # Base image for building and running
-FROM rust:latest
+FROM rust:1.83
 
 # Install Trunk
 RUN cargo install trunk
